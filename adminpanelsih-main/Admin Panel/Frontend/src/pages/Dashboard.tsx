@@ -18,8 +18,8 @@ const Dashboard = () => {
       setLoading(true);
       setError(null);
       const [recentRes, consultRes] = await Promise.all([
-        fetch('http://192.168.88.1:5000/api/recent-activity'),
-        fetch('http://192.168.88.1:5000/api/consultations')
+        fetch(`${import.meta.env.VITE_API_URL}/api/recent-activity`),
+        fetch(`${import.meta.env.VITE_API_URL}/api/consultations`)
       ]);
 
       if (!recentRes.ok) throw new Error(`Recent activity HTTP ${recentRes.status}`);
@@ -114,39 +114,6 @@ const Dashboard = () => {
             <div className="text-sm text-muted-foreground">Completed Analyses</div>
           </div>
         </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Button asChild className="h-auto p-6 justify-start" variant="outline">
-          <Link to="/trends" className="flex items-center space-x-3">
-            <TrendingUp className="h-6 w-6" />
-            <div>
-              <div className="font-semibold">Trend Analysis</div>
-              <div className="text-sm text-muted-foreground">View historical patterns</div>
-            </div>
-          </Link>
-        </Button>
-
-        <Button asChild className="h-auto p-6 justify-start" variant="outline">
-          <Link to="/analytics" className="flex items-center space-x-3">
-            <Users className="h-6 w-6" />
-            <div>
-              <div className="font-semibold">Stakeholder Insights</div>
-              <div className="text-sm text-muted-foreground">Analyze stakeholder feedback</div>
-            </div>
-          </Link>
-        </Button>
-
-        <Button asChild className="h-auto p-6 justify-start" variant="outline">
-          <Link to="/reports" className="flex items-center space-x-3">
-            <FileText className="h-6 w-6" />
-            <div>
-              <div className="font-semibold">Export Reports</div>
-              <div className="text-sm text-muted-foreground">Generate analysis reports</div>
-            </div>
-          </Link>
-        </Button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

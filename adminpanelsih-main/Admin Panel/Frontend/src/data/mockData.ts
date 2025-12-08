@@ -58,7 +58,7 @@ export const consultations: Consultation[] = [
   },
   {
     id: 2,
-    title: 'Draft Companies (Amendment) Bill, 2025',
+    title: 'Digital Competition Bill, 2025',
     status: 'Completed',
     submissions: 5,
     endDate: '2025-08-31',
@@ -69,7 +69,7 @@ export const consultations: Consultation[] = [
   
   {
     id: 3,
-    title: 'Insolvency & Bankruptcy Code (Second Amendment)',
+    title: 'Companies Amendment Bill, 2025',
     status: 'Completed',
     submissions: 1,
     endDate: '2025-07-15',

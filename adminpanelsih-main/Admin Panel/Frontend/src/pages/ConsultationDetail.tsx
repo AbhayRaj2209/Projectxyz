@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
-import { Search, Filter, Download, Eye, ArrowLeft } from 'lucide-react';
+import { Search, Filter, Download, Eye, ArrowLeft, Volume2, ChevronDown } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,7 @@ import { wordCloudData, STANCE_COLORS, STANCE_BG_COLORS } from '@/data/mockData'
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 import ViewFullTextModal from '@/components/ViewFullTextModal';
+import SentimentDistributionCard from '@/components/SentimentDistributionCard';
 
 const ConsultationDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -25,13 +26,97 @@ const ConsultationDetail = () => {
   const [consultation, setConsultation] = React.useState<any | null>(null);
   const [comments, setComments] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const wordCloud = wordCloudData[consultationId] || {};
+  const [isSpeaking, setIsSpeaking] = React.useState<string | null>(null);
+  const [summaries, setSummaries] = React.useState<{
+    overall_summary: string | null;
+    positive_summary: string | null;
+    negative_summary: string | null;
+  }>({
+    overall_summary: null,
+    positive_summary: null,
+    negative_summary: null
+  });
+  const [expandedSummaries, setExpandedSummaries] = React.useState({
+    overall: false,
+    positive: false,
+    negative: false
+  });
+  const [sectionSummaries, setSectionSummaries] = React.useState<{
+    section_1: string | null;
+    section_2: string | null;
+    section_3: string | null;
+  }>({
+    section_1: null,
+    section_2: null,
+    section_3: null
+  });
+  const [expandedSections, setExpandedSections] = React.useState({
+    section1: false,
+    section2: false,
+    section3: false
+  });
+  const [sectionSentiments, setSectionSentiments] = React.useState<{
+    positive_summary: string | null;
+    negative_summary: string | null;
+  }>({
+    positive_summary: null,
+    negative_summary: null
+  });
+  const [activeSectionView, setActiveSectionView] = React.useState<{
+    section1: 'overall' | 'positive' | 'negative';
+    section2: 'overall' | 'positive' | 'negative';
+    section3: 'overall' | 'positive' | 'negative';
+  }>({
+    section1: 'overall',
+    section2: 'overall',
+    section3: 'overall'
+  });
+  const [sentimentDistribution, setSentimentDistribution] = React.useState<{
+    Positive: number;
+    Negative: number;
+    Neutral: number;
+  }>({
+    Positive: 0,
+    Negative: 0,
+    Neutral: 0
+  });
+  
+  // Use consultation ID from URL, fallback to available word cloud data
+  const wordCloud = wordCloudData[consultationId] || wordCloudData[1] || {};
+
+  // Text-to-speech function
+  const speakText = (text: string, sectionId: string) => {
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel();
+    
+    if (isSpeaking === sectionId) {
+      // If already speaking this section, stop it
+      setIsSpeaking(null);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.9; // Slightly slower for clarity
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    
+    utterance.onend = () => {
+      setIsSpeaking(null);
+    };
+    
+    utterance.onerror = () => {
+      setIsSpeaking(null);
+    };
+
+    setIsSpeaking(sectionId);
+    window.speechSynthesis.speak(utterance);
+  };
 
   React.useEffect(() => {
     const fetchData = async () => {
       try {
         // fetch consultations to get bill key and metadata
-        const cRes = await fetch('http://192.168.88.1:5000/api/consultations');
+        const cRes = await fetch(`${import.meta.env.VITE_API_URL}/api/consultations`);
         const cJson = await cRes.json();
         let meta = null;
         if (cJson.ok) {
@@ -42,9 +127,44 @@ const ConsultationDetail = () => {
           setConsultation(meta);
           // fetch comments for the bill key (e.g., bill_1)
           const billKey = meta.bill || `bill_${meta.id}`;
-          const commentsRes = await fetch(`http://192.168.88.1:5000/api/comments/${billKey}`);
+          const commentsRes = await fetch(`${import.meta.env.VITE_API_URL}/api/comments/${billKey}`);
           const commentsJson = await commentsRes.json();
           const rows = commentsJson.ok ? commentsJson.data : [];
+
+          // Fetch summaries from documents table
+          const summariesRes = await fetch(`${import.meta.env.VITE_API_URL}/api/summaries/${billKey}`);
+          const summariesJson = await summariesRes.json();
+          if (summariesJson.ok && summariesJson.data) {
+            setSummaries(summariesJson.data);
+          }
+
+          // Fetch section-wise summaries
+          const sectionsRes = await fetch(`${import.meta.env.VITE_API_URL}/api/sections/${billKey}`);
+          const sectionsJson = await sectionsRes.json();
+          if (sectionsJson.ok && sectionsJson.data) {
+            setSectionSummaries(sectionsJson.data);
+          }
+
+          // Fetch section-wise sentiment summaries (positive/negative)
+          const sectionSentimentsRes = await fetch(`${import.meta.env.VITE_API_URL}/api/section-sentiments/${billKey}`);
+          const sectionSentimentsJson = await sectionSentimentsRes.json();
+          if (sectionSentimentsJson.ok && sectionSentimentsJson.data) {
+            setSectionSentiments(sectionSentimentsJson.data);
+          }
+
+          // Fetch sentiment distribution from database
+          const sentimentRes = await fetch(`${import.meta.env.VITE_API_URL}/api/sentiment/${billKey}`);
+          const sentimentJson = await sentimentRes.json();
+          if (sentimentJson.ok && sentimentJson.data) {
+            const counts = { Positive: 0, Negative: 0, Neutral: 0 };
+            sentimentJson.data.forEach((row: any) => {
+              const sentiment = row.sentiment?.charAt(0).toUpperCase() + row.sentiment?.slice(1).toLowerCase();
+              if (sentiment === 'Positive' || sentiment === 'Negative' || sentiment === 'Neutral') {
+                counts[sentiment] = parseInt(row.count) || 0;
+              }
+            });
+            setSentimentDistribution(counts);
+          }
 
           // Map DB rows to frontend comment model
           const mapped = (rows || []).map((r: any) => ({
@@ -173,7 +293,7 @@ const ConsultationDetail = () => {
         <TabsContent value="overview" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Sentiment Chart */}
-            <Card>
+            {/* <Card>
               <CardHeader>
                 <CardTitle>Sentiment Distribution</CardTitle>
                 <CardDescription>
@@ -211,54 +331,116 @@ const ConsultationDetail = () => {
                   ))}
                 </div>
               </CardContent>
-            </Card>
+            </Card> */}
+            <SentimentDistributionCard sentimentCounts={sentimentDistribution} avgConfidence={avgConfidence} />
 
-            {/* Key Statistics */}
+            {/* Overall Sentiment Summary */}
             <Card>
               <CardHeader>
-                <CardTitle>Key Statistics</CardTitle>
+                <CardTitle>Overall Sentiment Summary</CardTitle>
                 <CardDescription>
-                  Analysis metrics for this consultation
+                  Summary insights from sentiment analysis
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-center p-4 bg-card-hover rounded-lg">
-                    <div className="text-2xl font-bold text-primary">{comments.length}</div>
-                    <div className="text-sm text-muted-foreground">Total Comments</div>
-                  </div>
-                  <div className="text-center p-4 bg-card-hover rounded-lg">
-                    <div className="text-2xl font-bold text-success">
-                      {comments.filter(c => c.stance === 'Positive').length}
+                <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2 flex-1">
+                      <h4 className="font-semibold text-primary">Overall Bill Summary</h4>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={() => setExpandedSummaries(prev => ({ ...prev, overall: !prev.overall }))}
+                      >
+                        <ChevronDown className={cn("h-4 w-4 transition-transform", expandedSummaries.overall && "rotate-180")} />
+                      </Button>
                     </div>
-                    <div className="text-sm text-muted-foreground">Positive</div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={() => speakText(summaries.overall_summary || 'No summary available yet', 'overall')}
+                    >
+                      <Volume2 className={cn("h-4 w-4", isSpeaking === 'overall' && "text-primary animate-pulse")} />
+                    </Button>
                   </div>
-                  <div className="text-center p-4 bg-card-hover rounded-lg">
-                    <div className="text-2xl font-bold text-destructive">
-                      {comments.filter(c => c.stance === 'Negative').length}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Negative</div>
-                  </div>
-                  <div className="text-center p-4 bg-card-hover rounded-lg">
-                    <div className="text-2xl font-bold text-warning">
-                      {comments.filter(c => c.stance === 'Neutral').length}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Neutral</div>
-                  </div>
+                  {expandedSummaries.overall && (
+                    <p className="text-sm text-muted-foreground mt-2">
+                      {summaries.overall_summary || 'Coming soon - Data will be fetched from database'}
+                    </p>
+                  )}
+                  {!expandedSummaries.overall && summaries.overall_summary && (
+                    <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
+                      {summaries.overall_summary}
+                    </p>
+                  )}
                 </div>
-                <div className="pt-4">
-                  <div className="text-sm text-muted-foreground mb-2">Average Confidence Score</div>
-                      <div className="flex items-center space-x-2">
-                    <div className="flex-1 bg-secondary rounded-full h-2">
-                      <div
-                        className="bg-accent h-2 rounded-full"
-                        style={{ width: `${avgConfidence * 20}%` }}
-                      ></div>
+                <div className="p-4 bg-success/5 border border-success/20 rounded-lg">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2 flex-1">
+                      <h4 className="font-semibold text-success">Positive Summary</h4>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={() => setExpandedSummaries(prev => ({ ...prev, positive: !prev.positive }))}
+                      >
+                        <ChevronDown className={cn("h-4 w-4 transition-transform", expandedSummaries.positive && "rotate-180")} />
+                      </Button>
                     </div>
-                    <span className="text-sm font-medium">
-                      {avgConfidence.toFixed(1)}/5.0
-                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={() => speakText(summaries.positive_summary || 'No positive summary available yet', 'positive')}
+                    >
+                      <Volume2 className={cn("h-4 w-4", isSpeaking === 'positive' && "text-success animate-pulse")} />
+                    </Button>
                   </div>
+                  {expandedSummaries.positive && (
+                    <p className="text-sm text-muted-foreground mt-2">
+                      {summaries.positive_summary || 'Coming soon - Database insights'}
+                    </p>
+                  )}
+                  {!expandedSummaries.positive && summaries.positive_summary && (
+                    <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
+                      {summaries.positive_summary}
+                    </p>
+                  )}
+                </div>
+                <div className="p-4 bg-destructive/5 border border-destructive/20 rounded-lg">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2 flex-1">
+                      <h4 className="font-semibold text-destructive">Negative Summary</h4>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={() => setExpandedSummaries(prev => ({ ...prev, negative: !prev.negative }))}
+                      >
+                        <ChevronDown className={cn("h-4 w-4 transition-transform", expandedSummaries.negative && "rotate-180")} />
+                      </Button>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={() => speakText(summaries.negative_summary || 'No negative summary available yet', 'negative')}
+                    >
+                      <Volume2 className={cn("h-4 w-4", isSpeaking === 'negative' && "text-destructive animate-pulse")} />
+                    </Button>
+                  </div>
+                  {expandedSummaries.negative && (
+                    <p className="text-sm text-muted-foreground mt-2">
+                      {summaries.negative_summary || 'Coming soon - AI-powered analysis'}
+                    </p>
+                  )}
+                  {!expandedSummaries.negative && summaries.negative_summary && (
+                    <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
+                      {summaries.negative_summary}
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -383,12 +565,17 @@ const ConsultationDetail = () => {
                       alt={filteredWordCloud[0].alt}
                       className="max-w-full h-auto rounded-lg shadow-lg"
                       style={{ maxHeight: '400px' }}
+                      onError={(e) => {
+                        console.error('Failed to load image:', filteredWordCloud[0].image);
+                        e.currentTarget.style.display = 'none';
+                      }}
                     />
                   </div>
                 ) : (
                   <div className="text-center text-muted-foreground">
                     <p className="text-lg">No word cloud available for this filter.</p>
                     <p className="text-sm mt-2">Try selecting a different stance or "All".</p>
+                    <p className="text-xs mt-2 opacity-50">Debug: Consultation ID: {consultationId}, Filter: {wordCloudFilter}</p>
                   </div>
                 )}
               </div>
@@ -412,63 +599,232 @@ const ConsultationDetail = () => {
                       acc[comment.stakeholderType] = (acc[comment.stakeholderType] || 0) + 1;
                       return acc;
                     }, {} as Record<string, number>)
-                  ).map(([type, count]) => (
+                  ).map(([type, count]) => {
+                    const numCount = Number(count);
+                    return (
                     <div key={type} className="flex items-center justify-between">
                       <span className="text-sm font-medium">{type}</span>
                       <div className="flex items-center space-x-2">
                         <div className="w-24 bg-secondary rounded-full h-2">
                           <div
                             className="bg-primary h-2 rounded-full"
-                            style={{ width: `${(count / comments.length) * 100}%` }}
+                            style={{ width: `${(numCount / comments.length) * 100}%` }}
                           ></div>
                         </div>
-                        <span className="text-sm text-muted-foreground w-8">{count}</span>
+                        <span className="text-sm text-muted-foreground w-8">{numCount}</span>
                       </div>
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Quality Metrics</CardTitle>
+                <CardTitle>Section-wise Summary</CardTitle>
                 <CardDescription>
-                  Analysis of submission quality and engagement depth
+                  AI-generated summary of key themes by section
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="text-center p-4 bg-card-hover rounded-lg">
-                  <div className="text-2xl font-bold text-primary">
-                    {avgConfidence.toFixed(1)}
-                  </div>
-                  <div className="text-sm text-muted-foreground">Average Confidence Score</div>
-                </div>
-                
                 <div className="space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span>High Confidence (4.0+)</span>
-                    <span>{comments.filter(c => c.confidenceScore_based_on_ensemble_model >= 4.0).length} submissions</span>
+                  <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-semibold text-base text-primary">Section 1</h4>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setExpandedSections(prev => ({ ...prev, section1: !prev.section1 }))}
+                      >
+                        <ChevronDown className={cn("h-5 w-5 transition-transform text-primary", expandedSections.section1 && "rotate-180")} />
+                      </Button>
+                    </div>
+                    
+                    <div className="flex gap-2 mb-3">
+                      <Button
+                        size="sm"
+                        variant={activeSectionView.section1 === 'overall' ? 'default' : 'outline'}
+                        onClick={() => setActiveSectionView(prev => ({ ...prev, section1: 'overall' }))}
+                        className="flex-1"
+                      >
+                        Overall Summary
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={activeSectionView.section1 === 'positive' ? 'default' : 'outline'}
+                        onClick={() => setActiveSectionView(prev => ({ ...prev, section1: 'positive' }))}
+                        className={cn(
+                          "flex-1",
+                          activeSectionView.section1 === 'positive' 
+                            ? "bg-green-600 hover:bg-green-700 text-white" 
+                            : "border-green-600 text-green-600 hover:bg-green-50"
+                        )}
+                      >
+                        Positive
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={activeSectionView.section1 === 'negative' ? 'default' : 'outline'}
+                        onClick={() => setActiveSectionView(prev => ({ ...prev, section1: 'negative' }))}
+                        className={cn(
+                          "flex-1",
+                          activeSectionView.section1 === 'negative' 
+                            ? "bg-red-600 hover:bg-red-700 text-white" 
+                            : "border-red-600 text-red-600 hover:bg-red-50"
+                        )}
+                      >
+                        Negative
+                      </Button>
+                    </div>
+
+                    {expandedSections.section1 && (
+                      <p className="text-sm text-muted-foreground mt-3 leading-relaxed">
+                        {activeSectionView.section1 === 'overall' && (sectionSummaries.section_1 || 'No summary available yet.')}
+                        {activeSectionView.section1 === 'positive' && (sectionSentiments.positive_summary || 'No positive summary available yet.')}
+                        {activeSectionView.section1 === 'negative' && (sectionSentiments.negative_summary || 'No negative summary available yet.')}
+                      </p>
+                    )}
+                    {!expandedSections.section1 && (
+                      <p className="text-sm text-muted-foreground mt-2 line-clamp-1">
+                        {activeSectionView.section1 === 'overall' && sectionSummaries.section_1}
+                        {activeSectionView.section1 === 'positive' && sectionSentiments.positive_summary}
+                        {activeSectionView.section1 === 'negative' && sectionSentiments.negative_summary}
+                      </p>
+                    )}
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span>Medium Confidence (3.0-3.9)</span>
-                    <span>{comments.filter(c => c.confidenceScore_based_on_ensemble_model >= 3.0 && c.confidenceScore_based_on_ensemble_model < 4.0).length} submissions</span>
+
+                  <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-semibold text-base text-purple-700">Section 2</h4>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setExpandedSections(prev => ({ ...prev, section2: !prev.section2 }))}
+                      >
+                        <ChevronDown className={cn("h-5 w-5 transition-transform text-purple-700", expandedSections.section2 && "rotate-180")} />
+                      </Button>
+                    </div>
+                    
+                    <div className="flex gap-2 mb-3">
+                      <Button
+                        size="sm"
+                        variant={activeSectionView.section2 === 'overall' ? 'default' : 'outline'}
+                        onClick={() => setActiveSectionView(prev => ({ ...prev, section2: 'overall' }))}
+                        className="flex-1"
+                      >
+                        Overall Summary
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={activeSectionView.section2 === 'positive' ? 'default' : 'outline'}
+                        onClick={() => setActiveSectionView(prev => ({ ...prev, section2: 'positive' }))}
+                        className={cn(
+                          "flex-1",
+                          activeSectionView.section2 === 'positive' 
+                            ? "bg-green-600 hover:bg-green-700 text-white" 
+                            : "border-green-600 text-green-600 hover:bg-green-50"
+                        )}
+                      >
+                        Positive
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={activeSectionView.section2 === 'negative' ? 'default' : 'outline'}
+                        onClick={() => setActiveSectionView(prev => ({ ...prev, section2: 'negative' }))}
+                        className={cn(
+                          "flex-1",
+                          activeSectionView.section2 === 'negative' 
+                            ? "bg-red-600 hover:bg-red-700 text-white" 
+                            : "border-red-600 text-red-600 hover:bg-red-50"
+                        )}
+                      >
+                        Negative
+                      </Button>
+                    </div>
+
+                    {expandedSections.section2 && (
+                      <p className="text-sm text-muted-foreground mt-3 leading-relaxed">
+                        {activeSectionView.section2 === 'overall' && (sectionSummaries.section_2 || 'No summary available yet.')}
+                        {activeSectionView.section2 === 'positive' && (sectionSentiments.positive_summary || 'No positive summary available yet.')}
+                        {activeSectionView.section2 === 'negative' && (sectionSentiments.negative_summary || 'No negative summary available yet.')}
+                      </p>
+                    )}
+                    {!expandedSections.section2 && (
+                      <p className="text-sm text-muted-foreground mt-2 line-clamp-1">
+                        {activeSectionView.section2 === 'overall' && sectionSummaries.section_2}
+                        {activeSectionView.section2 === 'positive' && sectionSentiments.positive_summary}
+                        {activeSectionView.section2 === 'negative' && sectionSentiments.negative_summary}
+                      </p>
+                    )}
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span>Low Confidence (&lt; 3.0)</span>
-                    <span>{comments.filter(c => c.confidenceScore_based_on_ensemble_model < 3.0).length} submissions</span>
-                  </div>
-                </div>
-                
-                <div className="pt-4 border-t">
-                  <div className="text-sm font-medium mb-2">Most Active Stakeholder Type</div>
-                  <div className="text-sm text-muted-foreground">
-                    {Object.entries(
-                      comments.reduce((acc, comment) => {
-                        acc[comment.stakeholderType] = (acc[comment.stakeholderType] || 0) + 1;
-                        return acc;
-                      }, {} as Record<string, number>)
-                    ).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A'}
+
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-semibold text-base text-amber-700">Section 3</h4>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setExpandedSections(prev => ({ ...prev, section3: !prev.section3 }))}
+                      >
+                        <ChevronDown className={cn("h-5 w-5 transition-transform text-amber-700", expandedSections.section3 && "rotate-180")} />
+                      </Button>
+                    </div>
+                    
+                    <div className="flex gap-2 mb-3">
+                      <Button
+                        size="sm"
+                        variant={activeSectionView.section3 === 'overall' ? 'default' : 'outline'}
+                        onClick={() => setActiveSectionView(prev => ({ ...prev, section3: 'overall' }))}
+                        className="flex-1"
+                      >
+                        Overall Summary
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={activeSectionView.section3 === 'positive' ? 'default' : 'outline'}
+                        onClick={() => setActiveSectionView(prev => ({ ...prev, section3: 'positive' }))}
+                        className={cn(
+                          "flex-1",
+                          activeSectionView.section3 === 'positive' 
+                            ? "bg-green-600 hover:bg-green-700 text-white" 
+                            : "border-green-600 text-green-600 hover:bg-green-50"
+                        )}
+                      >
+                        Positive
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={activeSectionView.section3 === 'negative' ? 'default' : 'outline'}
+                        onClick={() => setActiveSectionView(prev => ({ ...prev, section3: 'negative' }))}
+                        className={cn(
+                          "flex-1",
+                          activeSectionView.section3 === 'negative' 
+                            ? "bg-red-600 hover:bg-red-700 text-white" 
+                            : "border-red-600 text-red-600 hover:bg-red-50"
+                        )}
+                      >
+                        Negative
+                      </Button>
+                    </div>
+
+                    {expandedSections.section3 && (
+                      <p className="text-sm text-muted-foreground mt-3 leading-relaxed">
+                        {activeSectionView.section3 === 'overall' && (sectionSummaries.section_3 || 'No summary available yet.')}
+                        {activeSectionView.section3 === 'positive' && (sectionSentiments.positive_summary || 'No positive summary available yet.')}
+                        {activeSectionView.section3 === 'negative' && (sectionSentiments.negative_summary || 'No negative summary available yet.')}
+                      </p>
+                    )}
+                    {!expandedSections.section3 && (
+                      <p className="text-sm text-muted-foreground mt-2 line-clamp-1">
+                        {activeSectionView.section3 === 'overall' && sectionSummaries.section_3}
+                        {activeSectionView.section3 === 'positive' && sectionSentiments.positive_summary}
+                        {activeSectionView.section3 === 'negative' && sectionSentiments.negative_summary}
+                      </p>
+                    )}
                   </div>
                 </div>
               </CardContent>

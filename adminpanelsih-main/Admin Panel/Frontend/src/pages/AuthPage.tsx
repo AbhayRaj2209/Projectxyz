@@ -135,10 +135,155 @@ const LoginPanel = ({ setAuthMode }) => {
     );
 };
 
+// Helper component for the Signup Panel
+const SignupPanel = ({ setAuthMode }) => {
+    const [step, setStep] = useState(1);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    const { signup } = useAuth();
+    const { toast } = useToast();
+
+    const handleNext = async (e) => {
+        e.preventDefault();
+        setIsLoading(true);
+        setError('');
+
+        try {
+            if (step === 1 && email) {
+                setStep(2);
+            } else if (step === 2 && password && confirmPassword) {
+                if (password !== confirmPassword) {
+                    setError("Passwords do not match.");
+                    setIsLoading(false);
+                    return;
+                }
+                if (password.length < 6) {
+                    setError("Password must be at least 6 characters long.");
+                    setIsLoading(false);
+                    return;
+                }
+                const success = await signup(email, password);
+                if (success) {
+                    toast({
+                        title: "Account Created",
+                        description: "Your account has been created successfully. Please sign in."
+                    });
+                    setAuthMode('login');
+                } else {
+                    setError("Failed to create account. Email may already exist.");
+                    toast({
+                        title: "Signup Failed",
+                        description: "Failed to create account. Please try again.",
+                        variant: "destructive"
+                    });
+                }
+            }
+        } catch (err) {
+            setError("An unexpected error occurred. Please try again.");
+            toast({
+                title: "Error",
+                description: "An error occurred during signup.",
+                variant: "destructive"
+            });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <>
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">Create Account</h2>
+            <p className="text-slate-500 mb-6 text-sm">Sign up to access the admin panel.</p>
+            {error && <p className="text-red-500 text-sm text-center mb-4 bg-red-50 p-3 rounded-lg">{error}</p>}
+            <form onSubmit={handleNext} className="space-y-5">
+                {step === 1 && (
+                    <div>
+                        <label className="block text-slate-700 text-sm font-bold mb-2 text-left" htmlFor="signup-email">Email Address</label>
+                        <div className="relative">
+                            <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                            <input
+                                id="signup-email"
+                                type="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                className="shadow-sm appearance-none border rounded-lg w-full py-2.5 pl-10 pr-3 text-slate-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="your.email@example.com"
+                                required
+                            />
+                        </div>
+                    </div>
+                )}
+                {step === 2 && (
+                    <>
+                        <div>
+                            <label className="block text-slate-700 text-sm font-bold mb-2 text-left" htmlFor="signup-password">Password</label>
+                            <div className="relative">
+                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                                <input
+                                    id="signup-password"
+                                    type={showPassword ? "text" : "password"}
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="shadow-sm appearance-none border rounded-lg w-full py-2.5 pl-10 pr-10 text-slate-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="At least 6 characters"
+                                    required
+                                />
+                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-slate-700 text-sm font-bold mb-2 text-left" htmlFor="confirm-password">Confirm Password</label>
+                            <div className="relative">
+                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                                <input
+                                    id="confirm-password"
+                                    type={showConfirmPassword ? "text" : "password"}
+                                    value={confirmPassword}
+                                    onChange={(e) => setConfirmPassword(e.target.value)}
+                                    className="shadow-sm appearance-none border rounded-lg w-full py-2.5 pl-10 pr-10 text-slate-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Confirm your password"
+                                    required
+                                />
+                                <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                    {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                                </button>
+                            </div>
+                        </div>
+                    </>
+                )}
+                <button
+                    type="submit"
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg focus:outline-none focus:shadow-outline w-full disabled:bg-blue-400"
+                    disabled={isLoading}
+                >
+                    {isLoading ? "Processing..." : step === 1 ? "Continue" : "Create Account"}
+                </button>
+                <div className="text-center">
+                    <button
+                        type="button"
+                        onClick={() => setAuthMode('login')}
+                        className="text-xs text-blue-600 hover:underline mt-2 inline-block"
+                    >
+                        Already have an account? Sign In
+                    </button>
+                </div>
+            </form>
+        </>
+    );
+};
+
 // Helper component for the Forgot Password panel.
 const ForgotPasswordPanel = ({ setAuthMode }) => {
     const { toast } = useToast();
-    const [email, setEmail] = useState('ishaan.saxena@mca.gov.in');
+    const [email, setEmail] = useState('');
 
     const handleForgotPassword = (e) => {
         e.preventDefault();
@@ -192,6 +337,9 @@ const AuthPage = () => {
     const renderAuthContent = () => {
         if (authMode === 'login') {
             return <LoginPanel setAuthMode={setAuthMode} />;
+        }
+        if (authMode === 'signup') {
+            return <SignupPanel setAuthMode={setAuthMode} />;
         }
         if (authMode === 'forgotPassword') {
             return <ForgotPasswordPanel setAuthMode={setAuthMode} />;

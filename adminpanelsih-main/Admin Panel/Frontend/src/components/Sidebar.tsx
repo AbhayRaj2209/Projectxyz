@@ -22,7 +22,7 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) => {
   useEffect(() => {
     const fetchConsultations = async () => {
       try {
-        const res = await fetch('http://192.168.88.1:5000/api/consultations');
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/api/consultations`);
         const json = await res.json();
         if (json.ok) {
           setConsultations(json.data || []);

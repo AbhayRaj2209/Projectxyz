@@ -15,6 +15,8 @@ npm start
 - `GET /api/recent-activity` - Get recent comments from all bills
 - `GET /api/comments/:bill` - Get comments for specific bill (bill_1, bill_2, bill_3)
 - `POST /api/comments/:bill` - Add new comment to a bill
+- `GET /api/sentiment/:bill` - Get sentiment distribution for a bill
+- `GET /api/summaries/:bill` - Get sentiment summaries (overall, positive, negative) from documents table
 
 ## Database
 

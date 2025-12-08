@@ -51,7 +51,7 @@ app.get('/api/recent-activity', async (req, res) => {
 app.get('/api/comments/:bill', async (req, res) => {
   try {
     const { bill } = req.params;
-    const limit = parseInt(req.query.limit) || 20;
+    const limit = parseInt(req.query.limit) || 1000; // Increased default limit to fetch all comments
 
     if (!['bill_1', 'bill_2', 'bill_3'].includes(bill)) {
       return res.status(400).json({ ok: false, error: 'Invalid bill name' });
@@ -116,6 +116,148 @@ app.get('/api/sentiment/:bill', async (req, res) => {
   }
 });
 
+// Get sentiment summaries from documents table for a specific bill
+app.get('/api/summaries/:bill', async (req, res) => {
+  try {
+    const { bill } = req.params;
+
+    if (!['bill_1', 'bill_2', 'bill_3'].includes(bill)) {
+      return res.status(400).json({ ok: false, error: 'Invalid bill name' });
+    }
+
+    // Map bill_1 -> document_id 1, bill_2 -> 2, bill_3 -> 3
+    const documentId = parseInt(bill.split('_')[1]);
+
+    // Query the documents table using document_id
+    const result = await pool.query(
+      `SELECT summary, positive_summary, negative_summary 
+       FROM documents 
+       WHERE document_id = $1 
+       LIMIT 1`,
+      [documentId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ 
+        ok: true, 
+        data: {
+          overall_summary: null,
+          positive_summary: null,
+          negative_summary: null
+        }
+      });
+    }
+
+    const row = result.rows[0];
+    
+    res.json({ 
+      ok: true, 
+      data: {
+        overall_summary: row.summary || null,
+        positive_summary: row.positive_summary || null,
+        negative_summary: row.negative_summary || null
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching summaries:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Get section-wise summaries from documents table for a specific bill
+app.get('/api/sections/:bill', async (req, res) => {
+  try {
+    const { bill } = req.params;
+
+    if (!['bill_1', 'bill_2', 'bill_3'].includes(bill)) {
+      return res.status(400).json({ ok: false, error: 'Invalid bill name' });
+    }
+
+    // Map bill_1 -> document_id 1, bill_2 -> 2, bill_3 -> 3
+    const documentId = parseInt(bill.split('_')[1]);
+
+    // Query the documents table for section summaries
+    const result = await pool.query(
+      `SELECT section_1_summary, section_2_summary, section_3_summary 
+       FROM documents 
+       WHERE document_id = $1 
+       LIMIT 1`,
+      [documentId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ 
+        ok: true, 
+        data: {
+          section_1: null,
+          section_2: null,
+          section_3: null
+        }
+      });
+    }
+
+    const row = result.rows[0];
+    
+    res.json({ 
+      ok: true, 
+      data: {
+        section_1: row.section_1_summary || null,
+        section_2: row.section_2_summary || null,
+        section_3: row.section_3_summary || null
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching section summaries:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Get section-wise sentiment summaries (positive/negative) from documents table for a specific bill
+app.get('/api/section-sentiments/:bill', async (req, res) => {
+  try {
+    const { bill } = req.params;
+
+    if (!['bill_1', 'bill_2', 'bill_3'].includes(bill)) {
+      return res.status(400).json({ ok: false, error: 'Invalid bill name' });
+    }
+
+    // Map bill_1 -> document_id 1, bill_2 -> 2, bill_3 -> 3
+    const documentId = parseInt(bill.split('_')[1]);
+
+    // Query the documents table for positive and negative summaries
+    const result = await pool.query(
+      `SELECT positive_summary, negative_summary 
+       FROM documents 
+       WHERE document_id = $1 
+       LIMIT 1`,
+      [documentId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ 
+        ok: true, 
+        data: {
+          positive_summary: null,
+          negative_summary: null
+        }
+      });
+    }
+
+    const row = result.rows[0];
+    
+    res.json({ 
+      ok: true, 
+      data: {
+        positive_summary: row.positive_summary || null,
+        negative_summary: row.negative_summary || null
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching section sentiment summaries:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Get consultations metadata (titles, description, dates, status) + submissions count
 app.get('/api/consultations', async (req, res) => {
   try {
@@ -132,7 +274,7 @@ app.get('/api/consultations', async (req, res) => {
       {
         id: 2,
         bill_key: 'bill_2',
-        title: 'Draft Companies (Amendment) Bill, 2025',
+        title: 'Digital Competition Bill, 2025',
         status: 'Completed',
         endDate: '2025-08-31',
         description: 'Proposed amendments to strengthen corporate governance and transparency',
@@ -141,7 +283,7 @@ app.get('/api/consultations', async (req, res) => {
       {
         id: 3,
         bill_key: 'bill_3',
-        title: 'Insolvency & Bankruptcy Code (Second Amendment)',
+        title: 'Companies Amendment Bill, 2025',
         status: 'Completed',
         endDate: '2025-07-15',
         description: 'Amendments to improve the insolvency resolution process',
@@ -189,5 +331,8 @@ app.listen(PORT, () => {
   
   console.log('  GET  /api/comments/:bill');
   console.log('  POST /api/comments/:bill');
-  console.log('  GET  /api/sentiment/:bill\n');
+  console.log('  GET  /api/sentiment/:bill');
+  console.log('  GET  /api/summaries/:bill');
+  console.log('  GET  /api/sections/:bill');
+  console.log('  GET  /api/section-sentiments/:bill\n');
 });

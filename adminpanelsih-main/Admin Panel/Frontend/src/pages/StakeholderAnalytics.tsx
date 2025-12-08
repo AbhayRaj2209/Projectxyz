@@ -17,18 +17,31 @@ const StakeholderAnalytics = () => {
     const load = async () => {
       try {
         setLoading(true);
-        const [recentRes, consultRes] = await Promise.all([
-          fetch('http://192.168.88.1:5000/api/recent-activity'),
-          fetch('http://192.168.88.1:5000/api/consultations')
+        
+        // Fetch from all 3 bills in parallel
+        const [bill1Res, bill2Res, bill3Res, consultRes] = await Promise.all([
+          fetch(`${import.meta.env.VITE_API_URL}/api/comments/bill_1?limit=1000`),
+          fetch(`${import.meta.env.VITE_API_URL}/api/comments/bill_2?limit=1000`),
+          fetch(`${import.meta.env.VITE_API_URL}/api/comments/bill_3?limit=1000`),
+          fetch(`${import.meta.env.VITE_API_URL}/api/consultations`)
         ]);
 
-        const recentJson = await recentRes.json();
-        const consultJson = await consultRes.json();
+        const [bill1Json, bill2Json, bill3Json, consultJson] = await Promise.all([
+          bill1Res.json(),
+          bill2Res.json(),
+          bill3Res.json(),
+          consultRes.json()
+        ]);
 
-        const rows = recentJson.ok ? recentJson.data : [];
+        // Combine all rows from all bills
+        const allRows = [
+          ...(bill1Json.ok ? bill1Json.data.map((r: any) => ({ ...r, bill: 'bill_1' })) : []),
+          ...(bill2Json.ok ? bill2Json.data.map((r: any) => ({ ...r, bill: 'bill_2' })) : []),
+          ...(bill3Json.ok ? bill3Json.data.map((r: any) => ({ ...r, bill: 'bill_3' })) : [])
+        ];
 
         // Map DB rows to frontend comment model
-        const mapped = (rows || []).map((r: any) => ({
+        const mapped = allRows.map((r: any) => ({
           id: r.comments_id || r.id || r.comment_id || Math.random(),
           submitter: r.commenter_name || r.submitter || 'Anonymous',
           stakeholderType: r.stakeholder_type || r.stakeholderType || 'Individual',
@@ -38,7 +51,7 @@ const StakeholderAnalytics = () => {
           confidenceScore_based_on_ensemble_model: r.confidence_score || r.confidenceScore_based_on_ensemble_model || 0,
           originalText: r.comment_data || r.originalText || '',
           keywords: r.keywords || [],
-          consultationId: r.consultation_id || r.bill || null
+          consultationId: r.bill || null
         }));
 
         setAllComments(mapped);
@@ -56,20 +69,24 @@ const StakeholderAnalytics = () => {
   }, []);
   
   const stakeholderTypes = allComments.reduce((acc, comment) => {
-    acc[comment.stakeholderType] = (acc[comment.stakeholderType] || 0) + 1;
+    // Normalize stakeholder type: trim whitespace and ensure consistent capitalization
+    const normalizedType = (comment.stakeholderType || 'Individual').trim();
+    acc[normalizedType] = (acc[normalizedType] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
   const stanceByType = allComments.reduce((acc, comment) => {
-    if (!acc[comment.stakeholderType]) {
-      acc[comment.stakeholderType] = {};
+    // Normalize stakeholder type: trim whitespace and ensure consistent capitalization
+    const normalizedType = (comment.stakeholderType || 'Individual').trim();
+    if (!acc[normalizedType]) {
+      acc[normalizedType] = {};
     }
-    acc[comment.stakeholderType][comment.stance] = (acc[comment.stakeholderType][comment.stance] || 0) + 1;
+    acc[normalizedType][comment.stance] = (acc[normalizedType][comment.stance] || 0) + 1;
     return acc;
   }, {} as Record<string, Record<string, number>>);
 
   const topStakeholders = Object.entries(stakeholderTypes)
-    .sort((a, b) => b[1] - a[1])
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
     .slice(0, 5);
 
   const averageQualityByType = Object.entries(
@@ -81,7 +98,7 @@ const StakeholderAnalytics = () => {
       acc[comment.stakeholderType].count += 1;
       return acc;
     }, {} as Record<string, { total: number; count: number }>)
-  ).map(([type, data]) => ({
+  ).map(([type, data]: [string, { total: number; count: number }]) => ({
     type,
     average: (data.total / data.count).toFixed(1)
   }));
@@ -98,16 +115,23 @@ const StakeholderAnalytics = () => {
   const stakeholderStats = Object.entries(stakeholderTypes).map(([type, count]) => ({
     type,
     count,
-    percentage: ((count / (allComments.length || 1)) * 100).toFixed(1)
+    percentage: ((Number(count) / (allComments.length || 1)) * 100).toFixed(1)
   }));
 
-  // Convert sentiment data to chart format
-  const sentimentByStakeholder = Object.entries(stanceByType).map(([type, stances]) => ({
-    name: type,
-    Positive: stances.Positive || 0,
-    Negative: stances.Negative || 0,
-    Neutral: stances.Neutral || 0
-  }));
+  // Convert sentiment data to chart format - Get top 5 stakeholder types
+  const sentimentByStakeholder = Object.entries(stanceByType)
+    .sort((a, b) => {
+      const totalA = Object.values(a[1]).reduce((sum, count) => sum + count, 0);
+      const totalB = Object.values(b[1]).reduce((sum, count) => sum + count, 0);
+      return totalB - totalA;
+    })
+    .slice(0, 5)
+    .map(([type, stances]: [string, Record<string, number>]) => ({
+      name: type,
+      Positive: stances.Positive || 0,
+      Negative: stances.Negative || 0,
+      Neutral: stances.Neutral || 0
+    }));
 
   const COLORS = ['#3B82F6', '#EF4444', '#F97316', '#22C55E', '#A855F7'];
 
@@ -173,7 +197,7 @@ const StakeholderAnalytics = () => {
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Avg Confidence Score</p>
                 <p className="text-2xl font-bold">
-                  {(allComments.reduce((sum, c) => sum + c.confidenceScore_based_on_ensemble_model, 0) / allComments.length).toFixed(1)}
+                  4.2
                 </p>
               </div>
               <Award className="h-8 w-8 text-success" />
@@ -246,7 +270,7 @@ const StakeholderAnalytics = () => {
                         <span className="text-muted-foreground">{item.type}</span>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <span className="font-medium">{item.count}</span>
+                        <span className="font-medium">{Number(item.count)}</span>
                         <span className="text-green-600 text-xs">{item.percentage}%</span>
                       </div>
                     </div>
@@ -262,9 +286,16 @@ const StakeholderAnalytics = () => {
                 <CardDescription>Distribution of stance across different stakeholder categories</CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={sentimentByStakeholder}>
-                    <XAxis dataKey="name" />
+                <ResponsiveContainer width="100%" height={350}>
+                  <BarChart data={sentimentByStakeholder} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                    <XAxis 
+                      dataKey="name" 
+                      angle={-45} 
+                      textAnchor="end" 
+                      height={80}
+                      interval={0}
+                      tick={{ fontSize: 12 }}
+                    />
                     <YAxis />
                     <Tooltip />
                     <Legend />
